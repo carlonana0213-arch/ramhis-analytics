@@ -11,4 +11,3 @@ prescriptions_collection = db["prescriptions"]
 medicines_collection = db["medicines"]
 
 print("CONNECTED DB:", db.name)
-print(db.list_collection_names())
