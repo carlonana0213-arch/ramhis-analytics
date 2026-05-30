@@ -16,7 +16,9 @@ from services.forecasting import (
 
 from services.medicineForecast import (
     generate_medicine_forecast
+    
 )
+
 
 from services.insights import (
     generate_insights

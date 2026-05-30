@@ -38,21 +38,57 @@ def generate_insights(df):
                 diagnosis_list
             )
 
-    top_diagnoses = [
+    mission_count = max(
+    len(df),
+    1
+)
 
-        {
-            "diagnosis":
-                diagnosis,
+    top_diagnoses = []
 
-            "count":
-                count
-        }
+    for diagnosis, count in (
+        diagnosis_counter.most_common(10)
+):
 
-        for diagnosis, count in
-        diagnosis_counter.most_common(
-            10
+        historical_avg = round(
+        count / mission_count
+    )
+
+        predicted = round(
+        historical_avg * 1.25
+    )
+
+        change_percent = round(
+        (
+            (
+                predicted
+                - historical_avg
+            )
+            /
+            max(
+                historical_avg,
+                1
+            )
         )
-    ]
+        * 100
+    )
+
+        top_diagnoses.append({
+
+        "diagnosis":
+            diagnosis,
+
+        "count":
+            count,
+
+        "historicalAverage":
+            historical_avg,
+
+        "predicted":
+            predicted,
+
+        "changePercent":
+            change_percent
+    })
 
     # ======================
     # DEPARTMENTS
