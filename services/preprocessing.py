@@ -1,19 +1,37 @@
 import pandas as pd
+
 from utils.mongo import patients_collection
 
 
 def prepare_mission_dataframe(
     location=None
 ):
+    """
+    Load patient records for a location and reconstruct
+    contiguous mission periods.
+
+    Existing behavior is preserved:
+    - A patient's doctor-sheet departments are de-duplicated
+      within that patient using a set.
+    - Missions are reconstructed when consecutive mission
+      dates are <= 3 days apart.
+    - Patients remains the primary mission-level count.
+
+    New behavior:
+    - Each mission now contains departmentCounts, e.g.
+      {
+          "Pediatrics": 12,
+          "Dental": 5,
+          "Cardio": 8
+      }
+    """
 
     query = {}
 
     if location:
         query["location"] = {
-            "$regex":
-                str(location).strip(),
-            "$options":
-                "i"
+            "$regex": str(location).strip(),
+            "$options": "i"
         }
 
     patients = list(
@@ -60,6 +78,13 @@ def prepare_mission_dataframe(
 
         for sheet in doctor_sheets:
 
+            if not isinstance(sheet, dict):
+                continue
+
+            # =================================
+            # DEPARTMENT
+            # =================================
+
             dept = sheet.get(
                 "department"
             )
@@ -69,15 +94,22 @@ def prepare_mission_dataframe(
                     str(dept).strip()
                 )
 
+            # =================================
+            # DIAGNOSIS
+            # =================================
+
             diagnosis = sheet.get(
                 "diagnosis"
             )
 
             if diagnosis:
                 diagnoses.add(
-                    str(diagnosis)
-                    .strip()
+                    str(diagnosis).strip()
                 )
+
+            # =================================
+            # MEDICATION
+            # =================================
 
             medication = sheet.get(
                 "medication"
@@ -90,36 +122,42 @@ def prepare_mission_dataframe(
                     for m in str(
                         medication
                     ).split(",")
+                    if m.strip()
                 ]
 
                 medications.extend(
                     meds
                 )
 
-        rows.append({
+        rows.append(
+            {
+                "location":
+                    patient.get(
+                        "location"
+                    ),
 
-            "location":
-                patient.get(
-                    "location"
-                ),
+                "missionDate":
+                    pd.to_datetime(
+                        mission_date
+                    ).normalize(),
 
-            "missionDate":
-                pd.to_datetime(
-                    mission_date
-                ).normalize(),
+                "age":
+                    age,
 
-            "age":
-                age,
+                "departments":
+                    sorted(
+                        departments
+                    ),
 
-            "departments":
-                list(departments),
+                "diagnoses":
+                    sorted(
+                        diagnoses
+                    ),
 
-            "diagnoses":
-    list(diagnoses),
-
-            "medications":
-                medications
-        })
+                "medications":
+                    medications
+            }
+        )
 
     df = pd.DataFrame(
         rows
@@ -140,7 +178,9 @@ def prepare_mission_dataframe(
 
     MISSION_BREAK_DAYS = 3
 
-    # already filtered by location
+    # Existing implementation assumes
+    # one canonical location after the
+    # location filter.
     location_name = (
         df["location"]
         .iloc[0]
@@ -170,9 +210,7 @@ def prepare_mission_dataframe(
         unique_days[0]
     ]
 
-    for day in (
-        unique_days[1:]
-    ):
+    for day in unique_days[1:]:
 
         previous = (
             current_group[-1]
@@ -182,9 +220,7 @@ def prepare_mission_dataframe(
             day - previous
         ).days
 
-        if gap_days <= (
-            MISSION_BREAK_DAYS
-        ):
+        if gap_days <= MISSION_BREAK_DAYS:
 
             current_group.append(
                 day
@@ -204,66 +240,125 @@ def prepare_mission_dataframe(
         current_group
     )
 
-    for group in (
-        mission_groups
-    ):
+    # =================================
+    # BUILD MISSION RECORDS
+    # =================================
+
+    for group in mission_groups:
 
         group_set = set(group)
 
-        mission_df = temp[
+        mission_patients = temp[
             temp[
                 "missionDate"
             ].isin(group_set)
-        ]
+        ].copy()
 
         mission_days = len(
             group
         )
 
         patient_count = len(
-            mission_df
+            mission_patients
         )
 
-        missions.append({
+        # =================================
+        # DEPARTMENT COUNTS
+        # =================================
+        #
+        # A patient contributes once to
+        # each distinct department represented
+        # in their doctor sheets.
+        #
+        # Example:
+        # patient A -> Pediatrics, Dental
+        # patient B -> Pediatrics
+        #
+        # Result:
+        # Pediatrics: 2
+        # Dental: 1
+        #
+        # =================================
 
-            "location":
-                location_name,
+        department_counts = {}
 
-            "missionStart":
-                group[0],
+        for dept_list in (
+            mission_patients[
+                "departments"
+            ]
+        ):
 
-            "missionEnd":
-                group[-1],
+            if not isinstance(
+                dept_list,
+                list
+            ):
+                continue
 
-            "missionDays":
-                mission_days,
+            for dept in dept_list:
 
-            "Patients":
-                patient_count,
+                dept = str(
+                    dept
+                ).strip()
 
-            "PatientsPerDay":
-                round(
-                    patient_count
-                    /
+                if not dept:
+                    continue
+
+                department_counts[
+                    dept
+                ] = (
+                    department_counts.get(
+                        dept,
+                        0
+                    )
+                    + 1
+                )
+
+        missions.append(
+            {
+                "location":
+                    location_name,
+
+                "missionStart":
+                    group[0],
+
+                "missionEnd":
+                    group[-1],
+
+                "missionDays":
                     mission_days,
-                    2
-                ),
 
-            "departments":
-                mission_df[
-                    "departments"
-                ].sum(),
+                "Patients":
+                    patient_count,
 
-            "diagnoses":
-                mission_df[
-                    "diagnoses"
-                ].sum(),
+                "PatientsPerDay":
+                    round(
+                        patient_count
+                        /
+                        mission_days,
+                        2
+                    ),
 
-            "medications":
-                mission_df[
-                    "medications"
-                ].sum()
-        })
+                # New structured department data
+                "departmentCounts":
+                    department_counts,
+
+                # Existing flattened department list
+                "departments":
+                    mission_patients[
+                        "departments"
+                    ].sum(),
+
+                "diagnoses":
+                    mission_patients[
+                        "diagnoses"
+                    ].sum(),
+
+                "medications":
+                    mission_patients[
+                        "medications"
+                    ].sum()
+            }
+        )
 
     return pd.DataFrame(
         missions
