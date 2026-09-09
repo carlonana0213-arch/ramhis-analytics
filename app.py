@@ -47,6 +47,12 @@ def root():
             "Analytics Service v2 Running"
     }
 
+@app.get("/health")
+def health():
+
+    return {
+        "status": "ok"
+    }
 
 @app.post(
     "/generate-forecast"

@@ -34,19 +34,17 @@ def prepare_mission_dataframe(
             "$options": "i"
         }
 
-    patients = list(
-        patients_collection.find(
-            query,
-            {
-                "missionDate": 1,
-                "location": 1,
-                "doctorSheets.department": 1,
-                "doctorSheets.diagnosis": 1,
-                "doctorSheets.medication": 1,
-                "generalInfo.age": 1
-            }
-        )
-    )
+    patients = patients_collection.find(
+    query,
+    {
+        "missionDate": 1,
+        "location": 1,
+        "doctorSheets.department": 1,
+        "doctorSheets.diagnosis": 1,
+        "doctorSheets.medication": 1,
+        "generalInfo.age": 1
+    }
+)
 
     rows = []
 

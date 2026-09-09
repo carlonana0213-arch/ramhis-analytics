@@ -1,6 +1,8 @@
 from collections import defaultdict
 from datetime import datetime
 
+from bson import ObjectId
+
 from utils.mongo import (
     prescriptions_collection,
     medicines_collection,
@@ -370,13 +372,34 @@ def generate_medicine_forecast(
     # READ PRESCRIPTIONS
     # ==================================================
 
+    patient_ids = list(
+    patient_lookup.keys()
+)
+
+    patient_ids = []
+
+    for patient_id in patient_lookup.keys():
+
+        try:
+            patient_ids.append(
+            ObjectId(patient_id)
+        )
+
+        except Exception:
+         continue
+
+
     prescriptions = prescriptions_collection.find(
-        {},
-        {
-            "patient": 1,
-            "items": 1,
+    {
+        "patient": {
+            "$in": patient_ids
         }
-    )
+    },
+    {
+        "patient": 1,
+        "items": 1,
+    }
+)
 
     for prescription in prescriptions:
 
