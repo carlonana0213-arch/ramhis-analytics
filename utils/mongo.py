@@ -4,7 +4,7 @@ MONGO_URI = "mongodb://carlonana0213_db_user:LikhaNU2026@ac-yah2vuq-shard-00-00.
 
 client = MongoClient(MONGO_URI)
 
-db = client["test"]
+db = client["v3"]
 
 patients_collection = db["patients"]
 prescriptions_collection = db["prescriptions"]
